@@ -7,7 +7,8 @@ It's hard for many person to use libmodbus.
 It's very important to encapsulate it for easy using. 
 
 # build
-type 'make' to build program.
+in Linux, just type 'make' to build program.
+It can also be used in Windows, but I didn't test.
 
 # usage 
 see main.cpp 
@@ -61,5 +62,6 @@ sudo apt install libmodbus-dev
 
 
 # reference
+https://github.com/stephane/libmodbus/blob/master/tests/bandwidth-server-many-up.c
 https://blog.csdn.net/qq_38158479/article/details/122630336
 
