@@ -1,4 +1,9 @@
 #include "RDSModbusSlave.h"
+#include <string.h>
+
+
+
+
 /***************************************************************
  * @file       RDSModbusSlave.cpp
  * @author     seer-txj
@@ -38,9 +43,9 @@ bool RDSModbusSlave::initModbus(std::string Host_Ip = "127.0.0.1", int port = 50
  * @return     null
  * @date       2021/10/6
  **************************************************************/
-RDSModbusSlave::RDSModbusSlave(uint16_t port)
+RDSModbusSlave::RDSModbusSlave(string host, uint16_t port)
 {
-    initModbus("0.0.0.0", port, false);
+    initModbus(host, port, false);
     //TODO：
 }
 /***************************************************************
@@ -144,7 +149,7 @@ bool RDSModbusSlave::setInputRegisterValue(int registerStartaddress, uint16_t Va
  * @return     null
  * @date       2021/10/6
  **************************************************************/
-bool RDSModbusSlave::setRegisterValue(int registerStartaddress, uint16_t Value)
+bool RDSModbusSlave::setHoldingRegisterValue(int registerStartaddress, uint16_t Value)
 {
     if (registerStartaddress > (m_numRegisters - 1))
     {
@@ -164,7 +169,7 @@ bool RDSModbusSlave::setRegisterValue(int registerStartaddress, uint16_t Value)
  * @return     null
  * @date       2021/10/6
  **************************************************************/
-uint16_t RDSModbusSlave::getRegisterValue(int registerStartaddress)
+uint16_t RDSModbusSlave::getHoldingRegisterValue(int registerStartaddress)
 {
     if (!m_initialized)
     {
@@ -219,7 +224,7 @@ uint8_t RDSModbusSlave::getTab_Input_Bits(int NumBit)
  * @return     null
  * @date       2021/10/8
  **************************************************************/
-bool RDSModbusSlave::setRegisterFloatValue(int registerStartaddress, float Value)
+bool RDSModbusSlave::setHoldingRegisterValue(int registerStartaddress, float Value)
 {
     if (registerStartaddress > (m_numRegisters - 2))
     {
@@ -231,6 +236,23 @@ bool RDSModbusSlave::setRegisterFloatValue(int registerStartaddress, float Value
     slavemutex.unlock();
     return true;
 }
+
+
+bool RDSModbusSlave::setInputRegisterValue(int registerStartaddress, float Value)
+{
+    if (registerStartaddress > (m_numRegisters - 2))
+    {
+        return false;
+    }
+    /*小端模式*/
+    slavemutex.lock();
+    modbus_set_float(Value, &mapping->tab_input_registers[registerStartaddress]);
+    slavemutex.unlock();
+    return true;
+}
+
+
+
 /***************************************************************
  * @file       RDSModbusSlave.cpp
  * @author     seer-txj
@@ -240,7 +262,7 @@ bool RDSModbusSlave::setRegisterFloatValue(int registerStartaddress, float Value
  * @return     两个uint16_t拼接而成的浮点值
  * @date       2021/10/6
  **************************************************************/
-float RDSModbusSlave::getRegisterFloatValue(int registerStartaddress)
+float RDSModbusSlave::getHoldingRegisterFloatValue(int registerStartaddress)
 {
     if (!m_initialized)
     {
@@ -259,65 +281,83 @@ float RDSModbusSlave::getRegisterFloatValue(int registerStartaddress)
 void RDSModbusSlave::recieveMessages()
 {
     uint8_t query[MODBUS_TCP_MAX_ADU_LENGTH];
-    int fd_num = 0, fd_max = 0, ret = 0, i = 0, clnt_sock = -1;
-    fd_set reads, cpy_reads;
-    FD_ZERO(&reads);
-    FD_SET(m_modbusSocket, &reads);
-    fd_max = m_modbusSocket;
-    while (true)
-    {
-        cpy_reads = reads;
-        if ((fd_num = select(fd_max + 1, &cpy_reads, 0, 0, 0)) == -1)
-            break;
-        if (fd_num == 0)
-            continue;
-        for (i = 0; i < fd_max + 1; i++)
-        {
-            if (FD_ISSET(i, &cpy_reads))
-            {
-                if (i == m_modbusSocket)
-                {
-                    clnt_sock = modbus_tcp_accept(ctx, &m_modbusSocket);
-                    if ((m_modbusSocket == -1) || (clnt_sock == -1))
-                    {
-                        std::cerr << modbus_strerror(errno) << std::endl;
-                        continue;
-                    }
-                    FD_SET(clnt_sock, &reads);
-                    if (fd_max < clnt_sock)
-                        fd_max = clnt_sock;
-                }
-                else
-                {
-                    ret = modbus_receive(ctx, query);
-                    if (ret == 0)
-                    {
-                        m_errCount = 0;
-                        continue;
-                    }
-                    else if (ret > 0)
-                    {
-                        m_errCount = 0;
-                        modbus_reply(ctx, query, sizeof(query), mapping);
-                    }
-                    else
-                    {
-                        modbus_set_error_recovery(ctx, MODBUS_ERROR_RECOVERY_NONE);
-                        modbus_set_error_recovery(ctx, MODBUS_ERROR_RECOVERY_LINK);
-                        modbus_close(ctx);
-                        FD_CLR(i, &reads);
-#ifdef _WIN32
-                        closesocket(i);
-#else
-                        close(i);
-#endif // _WIN32
+    int master_socket;
+    int rc;
+    fd_set refset;
+    fd_set rdset;
+    /* Maximum file descriptor number */
+    int fdmax;
+    /* Clear the reference set of socket */
+    FD_ZERO(&refset);
+    /* Add the server socket */
+    FD_SET(m_modbusSocket, &refset);
 
-                        m_errCount++;
-                    }
-                    if(m_errCount > 5)
+    /* Keep track of the max file descriptor */
+    fdmax = m_modbusSocket;
+
+    while( true ) 
+    {
+        rdset = refset;
+        if (select(fdmax+1, &rdset, NULL, NULL, NULL) == -1) 
+        {
+            perror("Server select() failure.");
+            break;
+        }
+
+        /* Run through the existing connections looking for data to be
+         * read */
+        for (master_socket = 0; master_socket <= fdmax; master_socket++) 
+        {
+            if (!FD_ISSET(master_socket, &rdset)) 
+            {
+                continue;
+            }
+
+            if (master_socket == m_modbusSocket) 
+            {
+                /* A client is asking a new connection */
+                socklen_t addrlen;
+                struct sockaddr_in clientaddr;
+                int newfd;
+
+                /* Handle new connections */
+                addrlen = sizeof(clientaddr);
+                memset(&clientaddr, 0, sizeof(clientaddr));
+                newfd = accept(m_modbusSocket, (struct sockaddr *)&clientaddr, &addrlen);
+                if (newfd == -1) 
+                {
+                    perror("Server accept() error");
+                } else 
+                {
+                    FD_SET(newfd, &refset);
+
+                    if (newfd > fdmax) 
                     {
-                        m_initialized = false;
-                        break;
+                        /* Keep track of the maximum */
+                        fdmax = newfd;
+                    }
+                    printf("New connection from %s:%d on socket %d\n", inet_ntoa(clientaddr.sin_addr), clientaddr.sin_port, newfd);
+                }
+            } else 
+            {
+                modbus_set_socket(ctx, master_socket);
+                rc = modbus_receive(ctx, query);
+                if (rc > 0) 
+                {
+                    modbus_reply(ctx, query, rc, mapping);
+                } else if (rc == -1) 
+                {
+                    /* This example server in ended on connection closing or
+                     * any errors. */
+                    printf("Connection closed on socket %d\n", master_socket);
+                    close(master_socket);
+
+                    /* Remove from reference set */
+                    FD_CLR(master_socket, &refset);
+
+                    if (master_socket == fdmax) 
+                    {
+                        fdmax--;
                     }
                 }
             }
