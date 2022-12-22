@@ -23,19 +23,26 @@ void fun(RDSModbusSlave* server)
 {
 	int ret=0;
 	srand(time(0));
-   
 	while(1)
 	{
-        uint16_t value = 1000+ rand()%100;
-        cout<<"write value:"<<value <<endl;
+		
+        uint16_t value = 1000 + (rand() % 1000);
+		cout<<"write value:"<<value <<endl;
         
         ret = server->setInputRegisterValue(10, value);
-        ret = server->setRegisterValue(10, value);
+		ret = server->setHoldingRegisterValue(10, value);
+        server->setHoldingRegisterValue(30010, value);
 		
         float valuef = value / 100.0;
-        server->setRegisterFloatValue(12, valuef);
-		
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+		server->setInputRegisterValue(12, valuef);
+        server->setHoldingRegisterValue(12, valuef);
+        server->setHoldingRegisterValue(30012, valuef);
+
+        server->setTab_Input_Bits(30010, 1);
+        server->setTab_Input_Bits(30011, 1);
+
+        
+		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 	}
 }
 
