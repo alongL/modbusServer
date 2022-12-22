@@ -27,28 +27,32 @@ using namespace std;
 #endif
 
 
+//#define  MAX_POINT  50000
+
+
 
 class RDSModbusSlave
 {
 public:
-    RDSModbusSlave(uint16_t port=502);
+    RDSModbusSlave(string host="0.0.0.0", uint16_t port=502);
     ~RDSModbusSlave();
 
 public:
     void recieveMessages();
     bool modbus_set_slave_id(int id);
     bool initModbus(std::string Host_Ip, int port, bool debugging);
+    
     uint8_t getTab_Input_Bits(int NumBit);
     bool setTab_Input_Bits(int NumBit, uint8_t Value);
 
-    uint16_t getRegisterValue(int registerNumber);
-    float getRegisterFloatValue(int registerStartaddress);
+    uint16_t getHoldingRegisterValue(int registerNumber);
+    float getHoldingRegisterFloatValue(int registerStartaddress);
     
-    bool setRegisterValue(int registerNumber, uint16_t Value);
-    bool setRegisterFloatValue( int registerStartaddress, float Value);
+    bool setHoldingRegisterValue(int registerNumber, uint16_t Value);
+    bool setHoldingRegisterValue(int registerNumber, float Value);
 
     bool setInputRegisterValue(int registerNumber, uint16_t Value);
-    bool setInputRegisterFloatValue(int registerStartaddress, float Value);
+    bool setInputRegisterValue(int registerNumber, float Value);
     
 
     
@@ -61,10 +65,10 @@ private:
     modbus_t* ctx{ nullptr };
     modbus_mapping_t* mapping{ nullptr };
     /*Mapping*/
-    int m_numBits{ 5000 };
-    int m_numInputBits{ 5000 };
-    int m_numRegisters{ 5000 };
-    int m_numInputRegisters{ 5000 };
+    int m_numBits{ 50000 };
+    int m_numInputBits{ 50000 };
+    int m_numRegisters{ 60000 };
+    int m_numInputRegisters{ 60000 };
 
 public:
     void loadFromConfigFile();
