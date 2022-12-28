@@ -1,7 +1,9 @@
 #include "RDSModbusSlave.h"
 #include <string.h>
 
-
+#ifdef WIN32
+typedef int socklen_t;
+#endif
 
 
 /***************************************************************
@@ -350,8 +352,11 @@ void RDSModbusSlave::recieveMessages()
                     /* This example server in ended on connection closing or
                      * any errors. */
                     printf("Connection closed on socket %d\n", master_socket);
+#ifdef _WIN32
+                    closesocket(master_socket);
+#else
                     close(master_socket);
-
+#endif
                     /* Remove from reference set */
                     FD_CLR(master_socket, &refset);
 
