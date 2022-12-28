@@ -65,8 +65,8 @@ private:
     modbus_t* ctx{ nullptr };
     modbus_mapping_t* mapping{ nullptr };
     /*Mapping*/
-    int m_numBits{ 50000 };
-    int m_numInputBits{ 50000 };
+    int m_numBits{ 60000 };
+    int m_numInputBits{ 60000 };
     int m_numRegisters{ 60000 };
     int m_numInputRegisters{ 60000 };
 
