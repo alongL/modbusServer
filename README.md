@@ -1,9 +1,7 @@
-# modServer
+# modbusServer
 A modbus server implemented by libmodbus.  
-It can serve for multi client and easy to use for everyone.
-
-It's hard for many person to use libmodbus.
-
+It can serve for multi client and easy to use for everyone.  
+It's hard for many person to use libmodbus.  
 It's very important to encapsulate it for easy using. 
 
 # build
@@ -13,10 +11,8 @@ It can also be used in Windows, but I didn't test.
 # usage 
 see main.cpp 
 
-
 start a modbus tcp server,  Add your code in fun() thread. 
-you can write some value to the registers .
-
+you can write some value to the registers.
 
 ```
 void fun(RDSModbusSlave* server)
@@ -61,7 +57,7 @@ int main()
 
 
 # dependency
-- libmodbus
+- libmodbus-dev
 
 ```
 sudo apt install libmodbus-dev
