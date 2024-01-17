@@ -5,14 +5,14 @@ It's hard for many person to use libmodbus.
 It's very important to encapsulate it for easy using. 
 
 # build
-in Linux, just type 'make' to build program.
-It can also be used in Windows, but I didn't test.
+in Linux, just type 'make' to build program.  
+It can also be used in Windows, but I didn't test.  
 
 # usage 
-see main.cpp 
+see main.cpp  
 
-start a modbus tcp server,  Add your code in fun() thread. 
-you can write some value to the registers.
+start a modbus tcp server,  Add your code in fun() thread.   
+you can write some value to the registers.  
 
 ```
 void fun(RDSModbusSlave* server)
@@ -38,7 +38,7 @@ void fun(RDSModbusSlave* server)
         server->setTab_Input_Bits(30011, 1);
 
         
-		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 	}
 }
 
