@@ -1,57 +1,41 @@
+CXX = g++
+CXXFLAGS = -std=c++17 -Wall -Wextra
 
+# 本地内置 libmodbus 静态库支持（彻底摆脱系统依赖）
+LIBMODBUS_DIR = ./3rdparty/install
+INCLUDE_DIRS = -I. -I$(LIBMODBUS_DIR)/include
 
-#sudo apt install libmodbus-dev
-
-XX = g++
-CXXFLAGS =  -std=c++11 
-CLIBS =  -lpthread  -lmodbus
-INCLUDE_DIRS = -I.  
-
-
-
-# default in debug mode, use 'make ver=release' to compile release bin
-ver = debug
-ifeq ($(ver), debug)
-	CXXFLAGS += -c -g 
+ifneq ($(wildcard $(LIBMODBUS_DIR)/lib/libmodbus.a),)
+    CLIBS = $(LIBMODBUS_DIR)/lib/libmodbus.a -lpthread
 else
-	CXXFLAGS += -c -O3 
+    CLIBS = -lmodbus -lpthread
 endif
 
+ver ?= release
+ifeq ($(ver), debug)
+    CXXFLAGS += -g -O0
+else
+    CXXFLAGS += -O2
+endif
 
-
-
-
-SRC=$(wildcard *.cpp)
-OBJECTS:=$(patsubst %.cpp,%.o,$(SRC))
-
-
-PROGRAM:= modServer
-BINDIR := ./bin/
+SRC = $(wildcard *.cpp)
+OBJECTS = $(patsubst %.cpp,%.o,$(SRC))
+PROGRAM = modServer
+BINDIR = ./bin
 TARGET = $(BINDIR)/$(PROGRAM)
 
+all: MD $(TARGET)
 
+$(TARGET): $(OBJECTS)
+	$(CXX) -o $(TARGET) $(OBJECTS) $(CLIBS)
 
-all:  MD $(TARGET)  
-
-
-$(TARGET) : $(OBJECTS) 
-	$(XX)   -o $(TARGET)  $(OBJECTS)  $(CLIBS)  
-
-
-$(OBJECTS) : %.o : %.cpp 
-	$(XX)  $(CXXFLAGS) $< -o $@ $(INCLUDE_DIRS)  
-
-
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDE_DIRS) -c $< -o $@
 
 MD:
-	mkdir -p  $(BINDIR)
-
-
-
-	
-
-.PHONY : clean
+	mkdir -p $(BINDIR)
 
 clean:
-	rm -rf $(TARGET) $(OBJECTS)
+	rm -rf $(TARGET) $(OBJECTS) $(BINDIR)
 
+.PHONY: all clean MD
