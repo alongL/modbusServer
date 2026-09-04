@@ -8,6 +8,23 @@ Zero third-party dependencies, thread-safe, non-blocking, and ready for industri
 
 ---
 
+## 💡 为什么彻底移除 `libmodbus`？(Why We Dropped libmodbus)
+
+在多客户端高并发服务端场景下，`libmodbus` 存在若干原生架构缺陷，不仅未能减少开发成本，反而在生产环境中引入了严重的阻塞风险与性能瓶颈：
+
+1. **底层架构缺乏并发 Server 支持（单套接字局限）**：
+   - `libmodbus` 的核心数据结构 `modbus_t` 内部仅设计了单个 `int s` 套接字，最初是为串口 RS485（单总线半双工）设计的，缺乏原生的多客户端并发会话管理能力；
+   - 官方多连接示例（`bandwidth-server-many-up.c`）在底层采用 `modbus_set_socket()` 轮询切换上下文 socket，本质是单线程串行处理。
+2. **阻塞 I/O 带来的“全服卡死”隐患**：
+   - `modbus_receive()` 内部为阻塞式调用。当任意一个客户端出现网络抖动、延迟或仅发送部分分片报文时，整个工作线程会被动阻塞挂起，导致其他所有在线客户端的读写请求全部停滞。
+3. **多线程并发下的数据竞争（Data Race）**：
+   - 外部业务线程修改寄存器与 `modbus_reply()` 处理客户端请求之间缺乏细粒度读写锁。若多线程并发访问内部 `mapping`，极易发生内存撕裂和脏读。
+4. **协议精简，“无需为了喝一勺醋包一顿发霉的饺子”**：
+   - Modbus TCP 协议本身非常精炼（固定的 7 字节 MBAP 报头 + PDU 功能码），用纯原生 C++ 实现完整解析仅需约 100 行清晰可控的代码；
+   - 移除 `libmodbus` 后，彻底免去了动态库交叉编译、目标机环境缺失 `.so` 等繁琐运维负担，编译体验提升至秒级完成。
+
+---
+
 ## 📝 架构演进与重大重构日志 (Changelog & Architecture Evolution)
 
 在最新的重构版本中，针对原版项目存在的诸多缺陷，进行了系统性的底层技术重写：
