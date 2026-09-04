@@ -1,15 +1,6 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra
-
-# 本地内置 libmodbus 静态库支持（彻底摆脱系统依赖）
-LIBMODBUS_DIR = ./3rdparty/install
-INCLUDE_DIRS = -I. -I$(LIBMODBUS_DIR)/include
-
-ifneq ($(wildcard $(LIBMODBUS_DIR)/lib/libmodbus.a),)
-    CLIBS = $(LIBMODBUS_DIR)/lib/libmodbus.a -lpthread
-else
-    CLIBS = -lmodbus -lpthread
-endif
+CXXFLAGS = -std=c++17 -Wall -Wextra -I.
+CLIBS = -lpthread
 
 ver ?= release
 ifeq ($(ver), debug)
@@ -30,7 +21,7 @@ $(TARGET): $(OBJECTS)
 	$(CXX) -o $(TARGET) $(OBJECTS) $(CLIBS)
 
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDE_DIRS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 MD:
 	mkdir -p $(BINDIR)
