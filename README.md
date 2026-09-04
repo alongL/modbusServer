@@ -1,30 +1,51 @@
 # modbusServer
 
-A high-performance, multi-client Modbus TCP Server implemented with `libmodbus` and Linux `epoll` Reactor.  
-Easy to use, thread-safe, and ready for industrial production environments.
+A high-performance, multi-client Modbus TCP Server implemented in pure, modern C++17 with a Linux `epoll` Reactor.  
+Zero third-party dependencies, thread-safe, non-blocking, and ready for industrial production environments.
 
-很多初学者和嵌入式工程师在使用 `libmodbus` 时，常常被底层的复杂机制困扰。本项目对 `libmodbus` 进行了现代 C++ 工业级封装，彻底解决了多客户端并发冲突、I/O 阻塞、浮点数字节序以及线程安全问题，开箱即用。
+很多初学者和嵌入式工程师在开发 Modbus TCP 服务时，往往受制于传统库（如 `libmodbus`）的复杂依赖、单连接阻塞模型或数据竞争问题。  
+本项目通过**纯原生 C++17** 实现了工业级的 Modbus TCP 从机（Server），**彻底摆脱了包括 `libmodbus` 在内的任何外部库依赖**，提供了极致简便、安全、高吞吐的开箱即用体验。
+
+---
+
+## 📝 架构演进与重大重构日志 (Changelog & Architecture Evolution)
+
+在最新的重构版本中，针对原版项目存在的诸多缺陷，进行了系统性的底层技术重写：
+
+| 模块 / 维度 | 早期版本实现 | 现版本（纯原生优化版） | 带来的改进与收益 |
+| :--- | :--- | :--- | :--- |
+| **第三方依赖** | 强依赖 `libmodbus`（需要单独编译/安装 `.so`） | **100% 纯原生现代 C++17 实现** | **彻底移除 libmodbus**，零外部依赖，极速编译，开箱即用 |
+| **I/O 多路复用** | 使用老旧的 `select()`，受限于 1024 文件描述符上限 | **Linux 原生 `epoll` 反应堆 (Reactor)** | 突破 1024 fd 限制，消除 $O(N)$ 轮询开销，支持上万并发连接 |
+| **I/O 阻塞模型** | 客户端套接字为阻塞模式，慢连接会导致全服卡死 | **全面启用非阻塞 Socket (`O_NONBLOCK`)** | 单个慢客户端或半包不会拖垮或阻塞其他在线客户端 |
+| **并发数据安全** | 读写锁“锁了个寂寞”（对外 API 加锁，但在网络通信读取/写入底层数据时完全裸奔） | **全生命周期读写锁 (`std::shared_mutex`)** | 彻底杜绝多线程读写与 Modbus 通信过程中的 **Data Race（数据竞争）** |
+| **生命周期管理** | 线程执行 `loop.detach()`，析构时导致 Use-After-Free 野指针崩溃 | **引入 Linux `eventfd` 唤醒 + 优雅停机 (`join`)** | 支持 Ctrl+C (`SIGINT/SIGTERM`) 优雅退出，内存与套接字 100% 安全 RAII 释放 |
+| **浮点数编解码** | 写入用 ABCD 模式，读取强行调 BADC 模式导致字节倒置 | **统一提供标准 IEEE 754 (ABCD / CDAB) 格式** | 严格对称的浮点数存取，精度无损，兼容西门子、台达、汇川等主流 PLC |
+| **构建体验** | 复杂的 Makefile、需要配置第三方库路径 | **极简构建**（仅依赖系统 `g++` 和 `-lpthread`） | 编译只需 1 秒钟，生成的二进制直接可在同架构 Linux 上运行 |
 
 ---
 
 ## ✨ 核心特性 (Key Features)
 
-- **🚀 Linux 原生 Epoll 反应堆 (Epoll Reactor)**:
-  - 彻底淘汰了老旧且有 1024 文件描述符限制的 `select()`；
-  - 采用 $O(1)$ 事件驱动模型，轻松支持成百上千个客户端高并发同时在线。
+- **🚀 零第三方依赖 (Zero-Dependency)**:
+  - 纯手写完整支持 Modbus TCP 核心功能码：
+    - **FC 01**: Read Coils (读线圈)
+    - **FC 02**: Read Discrete Inputs (读离散输入)
+    - **FC 03**: Read Holding Registers (读保持寄存器)
+    - **FC 04**: Read Input Registers (读输入寄存器)
+    - **FC 05**: Write Single Coil (写单个线圈)
+    - **FC 06**: Write Single Register (写单个保持寄存器)
+    - **FC 15 (0x0F)**: Write Multiple Coils (写多个线圈)
+    - **FC 16 (0x10)**: Write Multiple Registers (写多个保持寄存器)
+- **⚡ Linux 原生 Epoll 反应堆 (Epoll Reactor)**:
+  - 采用水平触发与动态接收缓冲区，彻底解决 TCP 粘包与半包拆包问题；
+  - 事件驱动模型，轻松支持多客户端同时在线与毫秒级高频轮询。
 - **🔒 严格的多线程安全保障 (Thread-Safe)**:
-  - 底层基于 `std::shared_mutex`（读写锁）对点位寄存器数据区全生命周期受控保护；
-  - 彻底解决了网络通信线程在调用 `modbus_reply` 时与外部业务线程写入发生 **Data Race（数据竞争）** 的经典 Bug。
-- **⚡ 非阻塞 Socket (Non-Blocking I/O)**:
-  - 客户端 Socket 统一设置为非阻塞，防止慢连接或恶意半包导致整个单线程服务挂死。
+  - 数据区由 `std::shared_mutex` 保护，读操作并发无锁等待，写操作互斥安全。
 - **📐 完善的 32 位浮点数 (IEEE 754 Float32) 支持**:
-  - 支持工控常用的 **ABCD (标准大端/西门子)** 与 **CDAB (字交换小端/台达/汇川)** 字节序；
-  - 存取接口严格对称，消除以往版本中写入 ABCD 却用 BADC 解析的字节错乱问题。
-- **🛡️ 优雅停机与 RAII 资源管理**:
-  - 移除不安全的 `loop.detach()`，通过 Linux `eventfd` 实现毫秒级异步事件唤醒；
-  - 接入 `SIGINT / SIGTERM`（Ctrl+C），优雅等待工作线程退出并释放资源，彻底杜绝析构后的 Use-After-Free 野指针崩溃。
-- **📦 零动态依赖部署**:
-  - 支持直接静态链接 `libmodbus.a`，打出的独立二进制可执行文件拷到任何 Linux 机器上直接跑，无需在目标机上运行 `sudo apt install libmodbus-dev`。
+  - 支持工控常用的 **ABCD (标准大端/西门子/ABB)** 与 **CDAB (字交换小端/台达/汇川)** 字节序；
+  - 自动占用 2 个连续寄存器，提供对称、简便的存取 API。
+- **🛡️ 优雅停机与稳定性保障**:
+  - 无全局死循环，信号触发后毫秒级平滑断开客户端并释放所有网络套接字。
 
 ---
 
@@ -33,15 +54,15 @@ Easy to use, thread-safe, and ready for industrial production environments.
 ### 依赖环境
 - Linux (内核 2.6.22+，支持 epoll / eventfd)
 - g++ (支持 C++17)
-- `libmodbus` (支持系统全局安装，或使用仓库内静态链接)
+- `pthread`
 
 ### 编译
-直接在项目根目录下执行 `make`：
+直接在项目根目录下执行 `make` 即可：
 ```bash
-# 默认编译 Release 版本
+# 默认编译 Release 版本 (优化级别 -O2)
 make
 
-# 如需编译 Debug 版本
+# 如需编译 Debug 版本 (-g -O0)
 make ver=debug
 
 # 清理编译产物
@@ -53,7 +74,7 @@ make clean
 # 默认监听 1502 端口
 ./bin/modServer
 
-# 或者指定自定义端口
+# 或者指定自定义端口 (例如 5020)
 ./bin/modServer 5020
 ```
 
@@ -61,7 +82,7 @@ make clean
 
 ## 💻 使用示例 (Usage)
 
-在您的业务线程中，直接调用安全的点位读写接口：
+在您的业务代码中，只需实例化 `RDSModbusSlave` 并调用线程安全的点位接口即可：
 
 ```cpp
 #include "RDSModbusSlave.h"
@@ -74,7 +95,7 @@ void businessThread(RDSModbusSlave* server) {
         server->setHoldingRegisterValue(10, 1500);
         server->setInputRegisterValue(10, 220);
 
-        // 2. 写入 32 位浮点数 (自动跨 2 个连续寄存器，支持 ABCD / CDAB 字节序)
+        // 2. 写入 32 位浮点数 (自动拆解为 2 个连续 16 位寄存器)
         float temperature = 36.5f;
         server->setHoldingRegisterValue(12, temperature, FloatEndian::ABCD);
 
@@ -95,10 +116,9 @@ int main() {
     RDSModbusSlave modServer("0.0.0.0", 1502);
     modServer.run();
 
-    // 启动您的业务线程
+    // 启动您的业务刷新线程
     std::thread worker(businessThread, &modServer);
 
-    // 优雅退出管理（支持 Ctrl+C）
     std::cout << "Server is running. Press Ctrl+C to exit..." << std::endl;
     // ...
     worker.join();
@@ -111,24 +131,34 @@ int main() {
 
 ## 🧪 自动化测试与压测 (Testing)
 
-项目内嵌了 Python3 多客户端自动化并发读写与浮点数校验脚本：
+项目内嵌了 Python3 多客户端并发压测与浮点数校验脚本：
 
 ```bash
-# 启动服务器
+# 启动服务端
 ./bin/modServer 1502 &
+PID=$!
 
-# 运行自动化压测脚本 (10 个并发客户端同时高频读写)
+# 运行自动化并发压测脚本 (模拟 10 个并发客户端同时高频读写)
 python3 test_alongL.py
+
+# 停止测试服务
+kill -SIGINT $PID
 ```
 
 **实测性能输出：**
 ```text
+=================================================
+   RDSModbusSlave (Epoll + Thread-Safe 优化版)   
+=================================================
+[RDSModbusSlave] (纯原生 Epoll 模式，无第三方依赖) 运行于 0.0.0.0:1502
+>> 服务器就绪，监听端口: 1502
+>> 按 Ctrl+C 优雅退出...
 === 测试 RDSModbusSlave (Epoll + Thread-Safe 优化版) ===
 [1] 成功建立单客户端 TCP 连接
-  -> 读取寄存器 #10~13 (含模拟数据与浮点数): [1566, 0, 16762, 36700]
-  -> 解析寄存器 #12 浮点数 (ABCD 格式): 15.66 (符合模拟线程值预期)
+  -> 读取寄存器 #10~13 (含模拟数据与浮点数): [1405, 0, 16736, 52429]
+  -> 解析寄存器 #12 浮点数 (ABCD 格式): 14.05 (符合模拟线程值预期)
 [2] 启动 10 个并发客户端同时执行高频读写...
-  => 10 个客户端并发执行 300 次读写全部成功！耗时: 0.159s (QPS: 1882.1 ops/s)
+  => 10 个客户端并发执行 300 次读写全部成功！耗时: 0.161s (QPS: 1864.9 ops/s)
 
 [ALL TESTS PASSED] 优化版 modbusServer 功能与并发验证全部通过！
 ```
@@ -136,4 +166,4 @@ python3 test_alongL.py
 ---
 
 ## 📄 License
-LGPL v2.1 or later (遵循 libmodbus 开源许可).
+MIT License.
